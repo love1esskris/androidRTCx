@@ -16,6 +16,7 @@
 
 package fr.pchab.androidrtc;
 
+import android.app.Activity;
 import android.util.Log;
 
 
@@ -36,18 +37,21 @@ import org.webrtc.VideoSource;
 import org.webrtc.VideoTrack;
 
 import java.net.URISyntaxException;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.LinkedList;
 
 
 import android.content.Context;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import com.github.nkzawa.emitter.Emitter;
 import com.github.nkzawa.socketio.client.IO;
 import com.github.nkzawa.socketio.client.Socket;
 
 public class WebRtcClient {
-
+    private DataChannel dChannel;
     public static final String VIDEO_TRACK_ID = "ARDAMSv0";
     private final static String TAG = "WebRtcClient";
     private final static int MAX_PEER = 2;
@@ -64,6 +68,7 @@ public class WebRtcClient {
     VideoCapturer videoCapturer;
     MessageHandler messageHandler = new MessageHandler();
     Context mContext;
+    private boolean destroyed = false;
 
     /**
      * Implement this interface to be notified of events.
@@ -295,6 +300,26 @@ public class WebRtcClient {
 
         @Override
         public void onDataChannel(DataChannel dataChannel) {
+            dChannel = dataChannel;
+            dChannel.registerObserver(new DataChannel.Observer() {
+                @Override
+                public void onBufferedAmountChange(long l) {
+
+                }
+
+                @Override
+                public void onStateChange() {
+
+                }
+
+                @Override
+                public void onMessage(DataChannel.Buffer buffer) {
+                    ByteBuffer data = buffer.data;
+                    byte[] bytes = new byte[data.remaining()];
+                    data.get(bytes);
+                    final String command = new String(bytes);
+                }
+            });
         }
 
         @Override
@@ -326,7 +351,7 @@ public class WebRtcClient {
         endPoints[peer.endPoint] = false;
     }
 
-    public WebRtcClient(Context context, RtcListener listener, VideoCapturer capturer, PeerConnectionClient.PeerConnectionParameters params) {
+    public WebRtcClient(Context context, RtcListener listener, VideoCapturer capturer, PeerConnectionClient.PeerConnectionParameters params, String ipaddress, String port) {
         mContext = context;
         mListener = listener;
         mPeerConnParams = params;
@@ -334,11 +359,12 @@ public class WebRtcClient {
         PeerConnectionFactory.initializeAndroidGlobals(mContext, true, true,
                 params.videoCodecHwAcceleration);
         factory = new PeerConnectionFactory();
-        String host = "http://" + context.getString(R.string.host) + ":" + context.getString(R.string.port) + "/";
+        String host = "http://" + ipaddress + ":" + port + "/";
         try {
             mSocket = IO.socket(host);
         } catch (URISyntaxException e) {
             e.printStackTrace();
+            Toast.makeText( context, "The host you provided: " + host + " is not available.", Toast.LENGTH_SHORT).show();
         }
         mSocket.on("id", messageHandler.onId);
         mSocket.on("message", messageHandler.onMessage);
@@ -385,8 +411,17 @@ public class WebRtcClient {
         if (mVideoSource != null) {
             mVideoSource.dispose();
         }
-//        mSocket.disconnect();
-//        mSocket.close();
+        // double close
+        // mSocket.disconnect();
+        if (mSocket != null) {
+            mSocket.close();
+        }
+
+        destroyed = true;
+    }
+
+    public boolean isDestroyed() {
+        return destroyed;
     }
 
     private int findEndPoint() {
@@ -403,7 +438,7 @@ public class WebRtcClient {
      * @param name mSocket name
      */
     public void start(String name) {
-        initScreenCapturStream();
+        initScreenCaptureStream();
         try {
             JSONObject message = new JSONObject();
             message.put("name", name);
@@ -413,7 +448,7 @@ public class WebRtcClient {
         }
     }
 
-    private void initScreenCapturStream() {
+    private void initScreenCaptureStream() {
         mLocalMediaStream = factory.createLocalMediaStream("ARDAMS");
         MediaConstraints videoConstraints = new MediaConstraints();
         videoConstraints.mandatory.add(new MediaConstraints.KeyValuePair("maxHeight", Integer.toString(mPeerConnParams.videoHeight)));

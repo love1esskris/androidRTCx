@@ -13,8 +13,10 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.webrtc.ScreenCapturerAndroid;
@@ -25,7 +27,6 @@ import static android.content.ContentValues.TAG;
 public class RtcActivity extends Activity implements WebRtcClient.RtcListener {
     private WebRtcClient mWebRtcClient;
     private static final int CAPTURE_PERMISSION_REQUEST_CODE = 1;
-    //    private EglBase rootEglBase;
     private static Intent mMediaProjectionPermissionResultData;
     private static int mMediaProjectionPermissionResultCode;
 
@@ -34,12 +35,9 @@ public class RtcActivity extends Activity implements WebRtcClient.RtcListener {
     private static final String[] MANDATORY_PERMISSIONS = {"android.permission.MODIFY_AUDIO_SETTINGS",
             "android.permission.RECORD_AUDIO", "android.permission.INTERNET"};
 
-    //    private SurfaceViewRenderer pipRenderer;
-//    private SurfaceViewRenderer fullscreenRenderer;
     public static int sDeviceWidth;
     public static int sDeviceHeight;
     public static final int SCREEN_RESOLUTION_SCALE = 2;
-
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -56,18 +54,6 @@ public class RtcActivity extends Activity implements WebRtcClient.RtcListener {
         sDeviceWidth = metrics.widthPixels;
         sDeviceHeight = metrics.heightPixels;
 
-//        pipRenderer = (SurfaceViewRenderer) findViewById(R.id.pip_video_view);
-//        fullscreenRenderer = (SurfaceViewRenderer) findViewById(R.id.fullscreen_video_view);
-
-//        EglBase rootEglBase = EglBase.create();
-//        pipRenderer.init(rootEglBase.getEglBaseContext(), null);
-//        pipRenderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FIT);
-//        fullscreenRenderer.init(rootEglBase.getEglBaseContext(), null);
-//        fullscreenRenderer.setScalingType(RendererCommon.ScalingType.SCALE_ASPECT_FILL);
-
-//        pipRenderer.setZOrderMediaOverlay(true);
-//        pipRenderer.setEnableHardwareScaler(true /* enabled */);
-//        fullscreenRenderer.setEnableHardwareScaler(true /* enabled */);
         // Check for mandatory permissions.
         for (String permission : MANDATORY_PERMISSIONS) {
             if (checkCallingOrSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
@@ -76,6 +62,37 @@ public class RtcActivity extends Activity implements WebRtcClient.RtcListener {
                 return;
             }
         }
+        //
+        TextView startButton = (TextView) findViewById(R.id.dialog_yes_text);
+        // add debounce
+        startButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                    startCall();
+                    startButton.setVisibility(View.INVISIBLE);
+                }
+        });
+        TextView endButton = (TextView) findViewById(R.id.dialog_no_text);
+        endButton.setOnClickListener(new View.OnClickListener() {
+            // todo: maybe save state for webclient
+            private long lastClick = 0;
+            @Override
+            public void onClick(View view) {
+                long now = System.currentTimeMillis();
+                if (now - lastClick >= 1000) {
+                    if (mWebRtcClient != null) {
+                        mWebRtcClient.destroy();
+                        mWebRtcClient = null;
+                        startButton.setVisibility(View.VISIBLE);
+                        Toast.makeText(RtcActivity.this, "DISCONNECTED", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            }
+        });
+
+    }
+
+    private void startCall() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             startScreenCapture();
         } else {
@@ -124,9 +141,11 @@ public class RtcActivity extends Activity implements WebRtcClient.RtcListener {
                         false,
                         true,
                         0,
-                        "OPUS", false, false, false, false, false, false, false, false, null);
+                        "OPUS", true, false, false, false, false, false, false, false, null);
 //        mWebRtcClient = new WebRtcClient(getApplicationContext(), this, pipRenderer, fullscreenRenderer, createScreenCapturer(), peerConnectionParameters);
-        mWebRtcClient = new WebRtcClient(getApplicationContext(), this, createScreenCapturer(), peerConnectionParameters);
+        String ipaddress = ((TextView) findViewById(R.id.ipaddress)).getText().toString();
+        String port = ((TextView) findViewById(R.id.port)).getText().toString();
+        mWebRtcClient = new WebRtcClient(getApplicationContext(), this, createScreenCapturer(), peerConnectionParameters, ipaddress, port);
     }
 
     public void report(String info) {
@@ -145,9 +164,11 @@ public class RtcActivity extends Activity implements WebRtcClient.RtcListener {
 
     @Override
     public void onDestroy() {
-        if (mWebRtcClient != null) {
-//            mWebRtcClient.onDestroy();
-        }
+        // if background will destroy
+//        if (mWebRtcClient != null) {
+//            mWebRtcClient.destroy();
+//        }
+        Log.e(TAG,"ddddd");
         super.onDestroy();
     }
 
